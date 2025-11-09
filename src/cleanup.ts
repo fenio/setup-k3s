@@ -52,7 +52,7 @@ async function uninstallK3s(): Promise<void> {
     
     // Clean up any remaining files
     core.info('  Cleaning up remaining k3s files...');
-    await exec.exec('sudo', ['rm', '-rf', '/etc/rancher/k3s', '/var/lib/rancher/k3s'], { ignoreReturnCode: true });
+    await exec.exec('sudo', ['rm', '-rf', '/etc/rancher/k3s', '/var/lib/rancher/k3s', '/etc/cni', '/opt/cni'], { ignoreReturnCode: true });
     
     core.info('  k3s cleanup complete');
   } catch (error) {
