@@ -26077,7 +26077,7 @@ async function checkFileExists(path) {
     }
 }
 async function commandExists(command) {
-    const result = await exec.exec('command', ['-v', command], {
+    const result = await exec.exec('bash', ['-c', `command -v ${command}`], {
         ignoreReturnCode: true,
         silent: true
     });
