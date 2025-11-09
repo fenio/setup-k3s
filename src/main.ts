@@ -210,7 +210,7 @@ async function waitForClusterReady(timeoutSeconds: number): Promise<void> {
                 
                 // Show cluster info
                 await exec.exec('kubectl', ['--kubeconfig', kubeconfigPath, 'get', 'nodes']);
-                await exec.exec('kubectl', ['--kubeconfig', kubeconfigPath, 'version', '--short']);
+                await exec.exec('kubectl', ['--kubeconfig', kubeconfigPath, 'version']);
                 
                 break;
               }

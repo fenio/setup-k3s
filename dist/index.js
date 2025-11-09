@@ -26021,7 +26021,7 @@ async function waitForClusterReady(timeoutSeconds) {
                                 core.info(`  KUBECONFIG exported: ${kubeconfigPath}`);
                                 // Show cluster info
                                 await exec.exec('kubectl', ['--kubeconfig', kubeconfigPath, 'get', 'nodes']);
-                                await exec.exec('kubectl', ['--kubeconfig', kubeconfigPath, 'version', '--short']);
+                                await exec.exec('kubectl', ['--kubeconfig', kubeconfigPath, 'version']);
                                 break;
                             }
                         }
