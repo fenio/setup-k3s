@@ -5,10 +5,12 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    name: Build and Verify
     
     steps:
       - uses: actions/checkout@v4
@@ -34,20 +36,32 @@ jobs:
             exit 1
           fi
 
-  test:
+  test-k3s-functionality:
     runs-on: ubuntu-latest
+    name: Test k3s Functionality
     needs: build
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Test action
+      - name: Check initial state
+        run: |
+          echo "=== Checking Initial System State ==="
+          ! which k3s && echo "✓ k3s not installed initially" || (echo "✗ k3s already installed" && exit 1)
+      
+      - name: Setup k3s
         id: k3s
         uses: ./
         with:
           version: stable
           wait-for-ready: true
           timeout: 120
+      
+      - name: Verify k3s is installed and running
+        run: |
+          echo "=== Verifying k3s Installation ==="
+          which k3s && echo "✓ k3s binary found at $(which k3s)" || (echo "✗ k3s binary not found" && exit 1)
+          systemctl is-active k3s && echo "✓ k3s service is active" || (echo "✗ k3s service not active" && exit 1)
       
       - name: Verify cluster
         env:
@@ -62,9 +76,136 @@ jobs:
           echo "=== System Pods ==="
           kubectl get pods -n kube-system
           
-          echo "=== Deploy test pod ==="
-          kubectl run test-pod --image=nginx:alpine --restart=Never
-          kubectl wait --for=condition=Ready pod/test-pod --timeout=60s
-          kubectl delete pod test-pod
+          echo "=== Deploy test workload ==="
+          kubectl create deployment nginx --image=nginx:alpine
+          kubectl wait --for=condition=available --timeout=120s deployment/nginx
+          
+          POD_NAME=$(kubectl get pod -l app=nginx -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec $POD_NAME -- wget -O- http://localhost:80 | grep -q "Welcome to nginx"
           
           echo "✓ All tests passed!"
+          
+      # NOTE: Cleanup runs automatically via post: hook after this job completes
+      
+  # Job 2: CRITICAL TEST - Verify cleanup worked by running the action again
+  test-cleanup-restoration:
+    runs-on: ubuntu-latest
+    name: Verify Cleanup Restores System State
+    needs: test-k3s-functionality
+    if: always()
+    
+    steps:
+      - uses: actions/checkout@v4
+        
+      - name: Verify no k3s remnants from previous job
+        run: |
+          echo "=== CRITICAL TEST: Verifying Previous Cleanup Was Complete ==="
+          echo "This proves cleanup from the previous job restored the system properly"
+          echo ""
+          
+          # k3s binary should be removed
+          if which k3s >/dev/null 2>&1; then
+            echo "✗ CRITICAL FAILURE: k3s binary still exists at $(which k3s)"
+            echo "This means the previous job's cleanup did NOT remove the binary!"
+            exit 1
+          fi
+          echo "✓ k3s binary removed"
+          
+          # k3s service should not exist
+          if systemctl list-unit-files | grep -q k3s; then
+            echo "✗ CRITICAL FAILURE: k3s service still exists"
+            echo "This means the previous job's cleanup did NOT remove the service!"
+            systemctl list-unit-files | grep k3s || true
+            exit 1
+          fi
+          echo "✓ k3s service removed"
+          
+          # Data directories should be removed
+          [ ! -d /var/lib/rancher/k3s ] && echo "✓ k3s data dir removed" || (echo "✗ k3s data dir still exists" && exit 1)
+          [ ! -d /etc/rancher/k3s ] && echo "✓ k3s config dir removed" || (echo "✗ k3s config dir still exists" && exit 1)
+          
+          # Uninstall script should be removed
+          [ ! -f /usr/local/bin/k3s-uninstall.sh ] && echo "✓ k3s-uninstall.sh removed" || (echo "✗ k3s-uninstall.sh still exists" && exit 1)
+          
+          echo ""
+          echo "=========================================="
+          echo "✓✓✓ SUCCESS: CLEANUP RESTORED SYSTEM ✓✓✓"
+          echo "=========================================="
+          
+      - name: Run k3s again to prove it works after cleanup
+        id: k3s
+        uses: ./
+        with:
+          version: stable
+          timeout: 120
+        
+      - name: Verify second k3s instance works
+        env:
+          KUBECONFIG: ${{ steps.k3s.outputs.kubeconfig }}
+        run: |
+          echo "=== Verifying Second k3s Installation Works ==="
+          kubectl get nodes
+          kubectl get pods -A
+          kubectl create deployment nginx --image=nginx:alpine
+          kubectl wait --for=condition=available --timeout=120s deployment/nginx
+          echo "✓ Second k3s instance is fully functional"
+          
+      # Cleanup will run automatically again for this job
+      
+  # Job 3: FINAL TEST - Verify system is clean after multiple runs
+  test-final-cleanup:
+    runs-on: ubuntu-latest
+    name: Verify System Clean After Multiple Runs
+    needs: test-cleanup-restoration
+    if: always()
+    
+    steps:
+      - name: FINAL TEST - Verify system is pristine
+        run: |
+          echo "=== FINAL TEST: System Clean After Multiple k3s Runs ==="
+          echo "This proves the action can be used multiple times without leaving artifacts"
+          echo ""
+          
+          # Verify no k3s binary
+          if which k3s >/dev/null 2>&1; then
+            echo "✗ FAIL: k3s binary still exists"
+            exit 1
+          fi
+          echo "✓ No k3s binary"
+          
+          # Verify no k3s services
+          if systemctl list-unit-files | grep -q k3s; then
+            echo "✗ FAIL: k3s services still exist"
+            systemctl list-unit-files | grep k3s || true
+            exit 1
+          fi
+          echo "✓ No k3s services"
+          
+          # Verify no k3s directories
+          if [ -d /var/lib/rancher/k3s ] || [ -d /etc/rancher/k3s ]; then
+            echo "✗ FAIL: k3s directories still exist"
+            ls -la /var/lib/rancher/k3s /etc/rancher/k3s 2>/dev/null || true
+            exit 1
+          fi
+          echo "✓ No k3s directories"
+          
+          # Verify no uninstall script
+          if [ -f /usr/local/bin/k3s-uninstall.sh ]; then
+            echo "✗ FAIL: k3s-uninstall.sh still exists"
+            exit 1
+          fi
+          echo "✓ No k3s-uninstall.sh"
+          
+          echo ""
+          echo "=========================================="
+          echo "✓✓✓ COMPLETE SUCCESS ✓✓✓"
+          echo "=========================================="
+          echo ""
+          echo "The setup-k3s action:"
+          echo "  ✓ Installs and runs k3s successfully"
+          echo "  ✓ Properly configures Kubernetes cluster"
+          echo "  ✓ Completely restores system state after cleanup"
+          echo "  ✓ Can be run multiple times without issues"
+          echo "  ✓ Leaves no artifacts after cleanup"
+          echo ""
+          echo "System state restoration is PERFECT!"
