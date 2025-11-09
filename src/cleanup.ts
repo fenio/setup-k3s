@@ -54,9 +54,6 @@ async function uninstallK3s(): Promise<void> {
     core.info('  Cleaning up remaining k3s files...');
     await exec.exec('sudo', ['rm', '-rf', '/etc/rancher/k3s', '/var/lib/rancher/k3s'], { ignoreReturnCode: true });
     
-    // Clean up kubeconfig
-    await exec.exec('sudo', ['rm', '-rf', '~/.kube/config'], { ignoreReturnCode: true });
-    
     core.info('  k3s cleanup complete');
   } catch (error) {
     core.warning(`Failed to uninstall k3s: ${error}`);

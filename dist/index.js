@@ -25730,8 +25730,6 @@ async function uninstallK3s() {
         // Clean up any remaining files
         core.info('  Cleaning up remaining k3s files...');
         await exec.exec('sudo', ['rm', '-rf', '/etc/rancher/k3s', '/var/lib/rancher/k3s'], { ignoreReturnCode: true });
-        // Clean up kubeconfig
-        await exec.exec('sudo', ['rm', '-rf', '~/.kube/config'], { ignoreReturnCode: true });
         core.info('  k3s cleanup complete');
     }
     catch (error) {
@@ -25857,11 +25855,9 @@ async function main() {
         const waitForReady = core.getInput('wait-for-ready') === 'true';
         const timeout = parseInt(core.getInput('timeout') || '120', 10);
         core.info(`Configuration: version=${version}, k3s-args="${k3sArgs}", wait-for-ready=${waitForReady}, timeout=${timeout}s`);
-        // Step 1: Clean up any existing Kubernetes installations
-        await cleanupExistingClusters();
-        // Step 2: Install k3s
+        // Step 1: Install k3s
         await installK3s(version, k3sArgs);
-        // Step 3: Wait for cluster ready (if requested)
+        // Step 2: Wait for cluster ready (if requested)
         if (waitForReady) {
             await waitForClusterReady(timeout);
         }
@@ -25875,58 +25871,6 @@ async function main() {
     }
     catch (error) {
         throw error;
-    }
-}
-async function cleanupExistingClusters() {
-    core.startGroup('Cleaning up existing Kubernetes installations');
-    try {
-        core.info('Checking for existing Kubernetes installations...');
-        // Clean up k3s if it exists
-        const k3sUninstallExists = await checkFileExists('/usr/local/bin/k3s-uninstall.sh');
-        if (k3sUninstallExists) {
-            core.info('  Found existing k3s installation, removing...');
-            await exec.exec('sudo', ['/usr/local/bin/k3s-uninstall.sh'], { ignoreReturnCode: true });
-        }
-        // Clean up k0s if it exists
-        if (await commandExists('k0s')) {
-            core.info('  Found existing k0s installation, removing...');
-            await exec.exec('sudo', ['k0s', 'stop'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['k0s', 'reset'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['systemctl', 'stop', 'k0scontroller.service'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['systemctl', 'stop', 'k0sworker.service'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['systemctl', 'disable', 'k0scontroller.service'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['systemctl', 'disable', 'k0sworker.service'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['rm', '-rf', '/etc/k0s', '/var/lib/k0s'], { ignoreReturnCode: true });
-        }
-        // Clean up minikube if it exists
-        if (await commandExists('minikube')) {
-            core.info('  Found existing minikube installation, removing...');
-            await exec.exec('minikube', ['delete', '--all', '--purge'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['rm', '-rf', '~/.minikube'], { ignoreReturnCode: true });
-        }
-        // Clean up KubeSolo if it exists
-        const kubesoloServiceExists = await exec.exec('sudo', ['systemctl', 'is-active', 'kubesolo'], {
-            ignoreReturnCode: true,
-            silent: true
-        });
-        if (kubesoloServiceExists === 0) {
-            core.info('  Found existing KubeSolo installation, removing...');
-            await exec.exec('sudo', ['systemctl', 'stop', 'kubesolo'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['systemctl', 'disable', 'kubesolo'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['rm', '-rf', '/var/lib/kubesolo', '/usr/local/bin/kubesolo', '/etc/systemd/system/kubesolo.service'], { ignoreReturnCode: true });
-            await exec.exec('sudo', ['systemctl', 'daemon-reload'], { ignoreReturnCode: true });
-        }
-        // Clean up kubeconfig
-        await exec.exec('sudo', ['rm', '-rf', '~/.kube/config'], { ignoreReturnCode: true });
-        // Wait for port 6443 to be free
-        await waitForPortFree(6443, 30);
-        core.info('✓ Cleanup completed');
-    }
-    catch (error) {
-        throw new Error(`Failed to clean up existing clusters: ${error}`);
-    }
-    finally {
-        core.endGroup();
     }
 }
 async function installK3s(version, k3sArgs) {
@@ -26065,42 +26009,6 @@ async function showDiagnostics() {
     finally {
         core.endGroup();
     }
-}
-// Helper functions
-async function checkFileExists(path) {
-    try {
-        await fs_1.promises.access(path);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
-async function commandExists(command) {
-    const result = await exec.exec('bash', ['-c', `command -v ${command}`], {
-        ignoreReturnCode: true,
-        silent: true
-    });
-    return result === 0;
-}
-async function waitForPortFree(port, maxAttempts) {
-    core.info(`Waiting for port ${port} to be free...`);
-    for (let i = 1; i <= maxAttempts; i++) {
-        const portInUse = await exec.exec('sudo', ['lsof', '-i', `:${port}`], {
-            ignoreReturnCode: true,
-            silent: true
-        });
-        if (portInUse !== 0) {
-            core.info(`  Port ${port} is free`);
-            return;
-        }
-        core.info(`  Port ${port} still in use, waiting... (attempt ${i}/${maxAttempts})`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-    // Force kill processes on the port
-    core.warning(`Port ${port} still in use after ${maxAttempts} attempts, force killing...`);
-    await exec.exec('bash', ['-c', `sudo lsof -ti :${port} | xargs -r sudo kill -9`], { ignoreReturnCode: true });
-    await new Promise(resolve => setTimeout(resolve, 2000));
 }
 
 
