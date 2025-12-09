@@ -118,6 +118,15 @@ If the cluster doesn't become ready in time, increase the timeout:
     timeout: 300  # 5 minutes
 ```
 
+### Background installation of optional components
+
+k3s includes optional components like Traefik (ingress controller) that are installed via Helm jobs in the background. The action considers the cluster ready when:
+- The node is Ready
+- CoreDNS (essential for DNS resolution) is running
+- No critical pods are failing (Helm install jobs are excluded as they may retry)
+
+Helm install jobs may show as CrashLoopBackOff temporarily while waiting for dependencies - this is normal. Traefik and other components will become available shortly after the action completes.
+
 ### Custom k3s arguments
 
 To pass custom arguments to k3s:

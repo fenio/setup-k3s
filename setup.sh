@@ -79,19 +79,28 @@ if [ "$WAIT_FOR_READY" == "true" ]; then
           if kubectl --kubeconfig "$KUBECONFIG_PATH" get nodes --no-headers | grep -q " Ready "; then
             echo "Node is Ready"
             
-            # Verify system pods are running (allow Completed and allow some pods to be pending/crashing as they may be optional)
-            # Just check that coredns is running as it's essential
+            # Verify essential system pods are running
+            # Check for coredns (essential DNS) - must be running
             if kubectl --kubeconfig "$KUBECONFIG_PATH" get pods -n kube-system -l k8s-app=kube-dns --no-headers 2>/dev/null | grep -q "Running"; then
-              echo "All essential system pods are running"
-              echo "KUBECONFIG exported: $KUBECONFIG_PATH"
+              echo "  CoreDNS is running"
               
-              # Show cluster info
-              kubectl --kubeconfig "$KUBECONFIG_PATH" get nodes
-              kubectl --kubeconfig "$KUBECONFIG_PATH" version
+              # Check that there are no critical pods (excluding Jobs) stuck in Error/CrashLoopBackOff
+              # Jobs may crash/retry during installation, which is normal
+              CRITICAL_FAILING=$(kubectl --kubeconfig "$KUBECONFIG_PATH" get pods -n kube-system --no-headers 2>/dev/null | grep -v "helm-install" | grep -E "Error|CrashLoopBackOff" | wc -l || echo "0")
               
-              echo "✓ k3s cluster is fully ready!"
-              echo "::endgroup::"
-              break
+              if [ "$CRITICAL_FAILING" == "0" ]; then
+                echo "  No critical pods failing"
+                echo "KUBECONFIG exported: $KUBECONFIG_PATH"
+                
+                # Show cluster info
+                kubectl --kubeconfig "$KUBECONFIG_PATH" get nodes
+                kubectl --kubeconfig "$KUBECONFIG_PATH" get pods -A
+                
+                echo "✓ k3s cluster is fully ready!"
+                echo "Note: Helm install jobs may still be running in the background to install optional components like Traefik"
+                echo "::endgroup::"
+                break
+              fi
             fi
           fi
         fi
