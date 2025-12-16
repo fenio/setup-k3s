@@ -5,10 +5,10 @@ A simple GitHub Action for installing and configuring [k3s](https://k3s.io) - a 
 ## Features
 
 - ✅ Automatic installation of k3s
-- ✅ Simple shell script-based implementation (no build step required)
 - ✅ Waits for cluster readiness (nodes and system pods)
 - ✅ Outputs kubeconfig path for easy integration
 - ✅ Configurable k3s arguments for customization
+- ✅ No cleanup required - designed for ephemeral GitHub Actions runners
 
 ## Quick Start
 
@@ -57,14 +57,14 @@ jobs:
 
 ```yaml
 - name: Setup k3s
-  uses: fenio/setup-k3s@v1
+  uses: fenio/setup-k3s@v2
 ```
 
 ### Specific Version
 
 ```yaml
 - name: Setup k3s v1.28.5
-  uses: fenio/setup-k3s@v1
+  uses: fenio/setup-k3s@v2
   with:
     version: v1.28.5+k3s1
 ```
@@ -73,7 +73,7 @@ jobs:
 
 ```yaml
 - name: Setup k3s (minimal)
-  uses: fenio/setup-k3s@v1
+  uses: fenio/setup-k3s@v2
   with:
     k3s-args: '--write-kubeconfig-mode 644 --disable=traefik --disable=servicelb'
 ```
@@ -82,7 +82,7 @@ jobs:
 
 ```yaml
 - name: Setup k3s (latest)
-  uses: fenio/setup-k3s@v1
+  uses: fenio/setup-k3s@v2
   with:
     version: latest
 ```
@@ -93,6 +93,8 @@ jobs:
 2. Waits for the k3s service to start
 3. Waits for the cluster to become ready (nodes Ready, system pods Running)
 4. Exports `KUBECONFIG` environment variable and output
+
+**No cleanup needed** - GitHub Actions runners are ephemeral and destroyed after each workflow run, so there's no need to restore system state.
 
 ## Requirements
 
@@ -114,7 +116,7 @@ If the cluster doesn't become ready in time, increase the timeout:
 
 ```yaml
 - name: Setup k3s
-  uses: fenio/setup-k3s@v1
+  uses: fenio/setup-k3s@v2
   with:
     timeout: 300  # 5 minutes
 ```
@@ -134,7 +136,7 @@ To pass custom arguments to k3s:
 
 ```yaml
 - name: Setup k3s
-  uses: fenio/setup-k3s@v1
+  uses: fenio/setup-k3s@v2
   with:
     k3s-args: |
       --write-kubeconfig-mode 644
@@ -151,6 +153,14 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## Related Actions
+## Related Projects
 
-- [fenio/setup-kubesolo](https://github.com/fenio/setup-kubesolo) - Ultra-lightweight Kubernetes for CI/CD
+- [k3s](https://k3s.io) - Lightweight Kubernetes
+
+### Other Kubernetes Setup Actions
+
+- [setup-k0s](https://github.com/fenio/setup-k0s) - Zero friction Kubernetes (k0s)
+- [setup-kubesolo](https://github.com/fenio/setup-kubesolo) - Ultra-lightweight Kubernetes
+- [setup-microk8s](https://github.com/fenio/setup-microk8s) - Lightweight Kubernetes by Canonical
+- [setup-minikube](https://github.com/fenio/setup-minikube) - Local Kubernetes (Minikube)
+- [setup-talos](https://github.com/fenio/setup-talos) - Secure, immutable Kubernetes OS (Talos)
